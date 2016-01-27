@@ -119,18 +119,7 @@ class Tokenizer(object):
             if char is None:
                 break
 
-            if self._ignore_mode:
-                continue
-
-            if char == " ":  # Space
-                if len(self._current) > 0:
-                    self.tokens.append(
-                        Token(self._mode, "".join(self._current)))
-                    self._current = []
-
-                self._mode = Token.LITERAL
-
-            elif char == "\n":  # Newline
+            if char == "\n":  # Newline
                 if len(self._current) > 0:
                     self.tokens.append(
                         Token(self._mode, "".join(self._current)))
@@ -142,8 +131,19 @@ class Tokenizer(object):
                 self._mode = Token.KEYWORD
                 self._ignore_mode = False
 
+            elif char == " ":  # Space
+                if len(self._current) > 0:
+                    self.tokens.append(
+                        Token(self._mode, "".join(self._current)))
+                    self._current = []
+
+                self._mode = Token.LITERAL
+
             elif char == "#":
                 self._ignore_mode = True
+
+            elif self._ignore_mode:
+                continue
 
             elif char in Token.ALPHABET or char in Token.NUMBERS:
                 self._current.append(char)
@@ -162,6 +162,7 @@ if len(sys.argv) < 2:
     log_error("No input file.")
     exit(-1)
 
+# Temporary test
 filename = sys.argv[1]
 file_buffer = FileBuffer(filename)
 tokenizer = Tokenizer(file_buffer)
