@@ -10,23 +10,46 @@ import readline
 
 
 DEBUG_FLAG = False
+NO_MEMORY_DUMP = False
+NO_JUMP_DUMP = False
+NO_EXECUTE_DUMP = False
+NO_OUTPUT = False
 
 
 def log_info(message):
-    print("(info) {0}".format(message))
+    if not NO_OUTPUT:
+        print("(info) {0}".format(message))
 
 
 def log_warning(message):
-    print("(warn) {0}".format(message))
+    if not NO_OUTPUT:
+        print("(warn) {0}".format(message))
 
 
 def log_error(message):
-    print("(error) {0}".format(message))
+    if not NO_OUTPUT:
+        print("(error) {0}".format(message))
 
 
 def log_debug(message):
-    if DEBUG_FLAG:
+    if DEBUG_FLAG and not NO_OUTPUT:
         print("(debug) {0}".format(message))
+
+
+def force_info(message):
+    print("(info) {0}".format(message))
+
+
+def force_warning(message):
+    print("(warn) {0}".format(message))
+
+
+def force_error(message):
+    print("(error) {0}".format(message))
+
+
+def force_debug(message):
+    print("(debug) {0}".format(message))
 
 
 class BufferObject(object):
@@ -51,11 +74,13 @@ class BufferObject(object):
                 return result
 
     def get_next(self):
-        raise NotImplementedError("This function is overloaded in derived classes")
+        raise NotImplementedError(
+            "This function is overloaded in derived classes")
 
     def eof(self):
-        raise NotImplementedError("This function is overloaded in derived classes")
-        
+        raise NotImplementedError(
+            "This function is overloaded in derived classes")
+
 
 class FileBuffer(BufferObject):
 
@@ -70,7 +95,7 @@ class FileBuffer(BufferObject):
         self._ended = False
 
     def __del__(self):
-        if not self._file.closed:
+        if hasattr(self, "_file") and not self._file.closed:
             self.close()
 
     def get_next(self):
@@ -112,11 +137,11 @@ class Token(object):
         KEYWORD: "Keyword",
         LITERAL: "Literal",
         NEWLINE: "Newline",
-        OPERATOR:"Operator",
+        OPERATOR: "Operator",
         FINALLY: "EOF"
     }
 
-    ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
     NUMBERS = ".+-0123456789"
     OPERATORS = "*"
     SPACE_CHAR = " "
@@ -129,10 +154,7 @@ class Token(object):
         self.text = text
 
     def __str__(self):
-        return "<Token: type = {0}, text = {1}>".format(
-            self.TOKEN_NAME[self.type],
-            self.text
-        )
+        return self.text
 
     def __repr__(self):
         return "<Token: type = {0}, text = {1}>".format(
@@ -214,7 +236,7 @@ class Tokenizer(object):
 
             elif self._mode == Token.OPERATOR and char not in Token.OPERATORS:
                 if len(self._current) > 0:
-                    self.tokens.append(Token.OPERATOR,"".join(self._current))
+                    self.tokens.append(Token.OPERATOR, "".join(self._current))
                     self._current = []
                     self._mode = Token.LITERAL
 
@@ -224,35 +246,37 @@ class Tokenizer(object):
                 self._current.append(char)
 
             else:
-                raise RuntimeError("Can't parse char: {0} (\"\{1}\")".format(char, ord(char)))
+                raise RuntimeError(
+                    "Can't parse char: {0} (\"\{1}\")".format(char, ord(char)))
 
         if self.buffer.eof():
             self.tokens.append(Token.FINALLY, "EOF")
 
 
 class Statement(object):
+
     """Statement means a line of code."""
+
     def __init__(self, function, args):
         super(Statement, self).__init__()
         self.function = function
         self.args = args
 
     def __str__(self):
-        return "<Statement: function: {0}, args: {1}>".format(self.function, self.args)
-
-    def run():
-        assert isinstance(function, callable), "Call function not callable"
-
-        return function(*args)
+        return "<Statement: function: {0}, args: {1}>".format(
+            self.function, self.args
+        )
 
 
 class Syntactic(object):
+
     """Syntax alalysis."""
+
     def __init__(self, tokens):
         super(Syntactic, self).__init__()
         self.tokens = tokens
         self.statements = []
-        
+
     def analyze(self):
         command = None
         args = []
@@ -290,7 +314,8 @@ class MemoryPool(object):
         self.memory = []
 
     def resize(self, size):
-        log_debug("memory resize: {0}".format(size))
+        if not NO_MEMORY_DUMP:
+            log_debug("memory resize: {0}".format(size))
 
         distance = size - len(self.memory) + 1
 
@@ -302,7 +327,7 @@ class MemoryPool(object):
         elif distance > 0:
             while distance > 0:
                 self.memory.append(int())
-                
+
                 distance -= 1
 
         self.memory[0] = size
@@ -311,14 +336,22 @@ class MemoryPool(object):
         if index < 0 or index >= len(self.memory):
             raise IndexError("Memory out of range.")
 
-        log_debug("memory get: {0} = {1}".format(index, self.memory[index]))
+        if not NO_MEMORY_DUMP:
+            log_debug("memory get: {0} = {1}".format(
+                index, self.memory[index]
+            ))
+
         return self.memory[index]
 
     def memset(self, index, data):
         if index < 0 or index >= len(self.memory):
             raise IndexError("Memory out of range.")
 
-        log_debug("memory set: {0} = {1}".format(index, data))
+        if not NO_MEMORY_DUMP:
+            log_debug("memory set: {0} = {1}".format(
+                index, data
+            ))
+
         self.memory[index] = data
 
 
@@ -333,10 +366,11 @@ class Program(object):
     PROMPT_STRING = "> "
 
     def dereference(self, args):
+        """Dereference parameters (*index syntax)"""
         if len(args) == 1:
             return int(args[0].text)
 
-        result = int(args[len(args) - 1].text)
+        result = int(args[-1].text)
         for i in range(0, len(args[0].text)):
             result = self.memory.memget(
                 result
@@ -345,7 +379,6 @@ class Program(object):
         return result
 
     def MEM(self, value):
-        assert isinstance(value, int)
         self.memory.resize(value)
 
     def SET(self, index, value):
@@ -355,92 +388,110 @@ class Program(object):
         self.memory.memset(index2, self.memory.memget(index1))
 
     def ADD(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             self.memory.memget(index1) + self.memory.memget(index2)
         )
 
     def SUB(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             self.memory.memget(index1) - self.memory.memget(index2)
         )
 
     def MUL(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             self.memory.memget(index1) * self.memory.memget(index2)
         )
 
     def DIV(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             self.memory.memget(index1) / self.memory.memget(index2)
         )
 
     def MOD(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             self.memory.memget(index1) % self.memory.memget(index2)
         )
 
     def INC(self, index):
-        self.memory.memset(index,
+        self.memory.memset(
+            index,
             self.memory.memget(index) + 1
         )
 
     def DEC(self, index):
-        self.memory.memset(index,
+        self.memory.memset(
+            index,
             self.memory.memget(index) - 1
         )
 
     def NEC(self, index):
-        self.memory.memset(index,
+        self.memory.memset(
+            index,
             -self.memory.memget(index)
         )
 
     def AND(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             self.memory.memget(index1) & self.memory.memget(index2)
         )
 
     def OR(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             self.memory.memget(index1) | self.memory.memget(index2)
         )
 
     def XOR(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             self.memory.memget(index1) ^ self.memory.memget(index2)
         )
 
     def NOT(self, index):
-        self.memory.memset(index,
+        self.memory.memset(
+            index,
             int(not self.memory.memget(index))
         )
 
     def SHL(self, index, value):
-        self.memory.memset(index,
+        self.memory.memset(
+            index,
             self.memory.memget(index) << value
         )
 
     def SHR(self, index, value):
-        self.memory.memset(index,
+        self.memory.memset(
+            index,
             self.memory.memget(index) >> value
         )
 
     def EQU(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             int(self.memory.memget(index1) == self.memory.memget(index2))
         )
 
     def GTER(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             int(self.memory.memget(index1) > self.memory.memget(index2))
         )
 
     def LESS(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             int(self.memory.memget(index1) < self.memory.memget(index2))
         )
 
     def JMP(self, value):
-        log_debug("jump: {}".format(value))
+        if not NO_JUMP_DUMP:
+            log_debug("jump: {}".format(value))
 
         self.position = value - 1
 
@@ -463,12 +514,14 @@ class Program(object):
         self.memory.memset(index, value)
 
     def LEQ(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             int(self.memory.memget(index1) <= self.memory.memget(index2))
         )
 
     def GEQ(self, index1, index2, index3):
-        self.memory.memset(index3,
+        self.memory.memset(
+            index3,
             int(self.memory.memget(index1) >= self.memory.memget(index2))
         )
 
@@ -476,8 +529,8 @@ class Program(object):
         MEM, SET, CPY, ADD, SUB, MUL,
         DIV, MOD, INC, DEC, NEC, AND,
         OR,  XOR, NOT, SHL, SHR, EQU,
-        GTER,LESS,JMP, JIF, PRT, NOP,
-        EXIT,READ,LEQ, GEQ
+        GTER, LESS, JMP, JIF, PRT, NOP,
+        EXIT, READ, LEQ, GEQ
     ]
 
     FUNCTION_MAP = {}
@@ -493,10 +546,17 @@ class Program(object):
         for function in Program.FUNCTIONS:
             Program.FUNCTION_MAP[function.__name__] = function
 
+    def exit(self, exitcode=0):
+        self.exitcode = exitcode
+        self.status = Program.EXITED
+
     def execute(self):
         self.status = Program.RUNNING
 
-        while self.status == Program.RUNNING and self.position < len(self.statements):
+        while (
+            self.status == Program.RUNNING and
+            self.position < len(self.statements)
+        ):
             statement = copy.deepcopy(
                 self.statements[self.position]
             )
@@ -504,46 +564,131 @@ class Program(object):
             self.position += 1
 
             for i in range(0, len(statement.args)):
-                statement.args[i] = self.dereference(
-                    statement.args[i]
+                try:
+                    statement.args[i] = self.dereference(
+                        statement.args[i]
+                    )
+                except IndexError:
+                    log_error(
+                        "At line {0}: Can't dereference parameter.".format(
+                            self.position
+                        ))
+
+                    self.exit(-1)
+
+                except Exception as exception:
+                    log_error("An exception occured while running.\n{}".format(
+                        exception
+                    ))
+
+                    exit(-1)
+
+            if not NO_EXECUTE_DUMP:
+                log_debug("{0}: {1} {2}".format(
+                    self.position,
+                    statement.function.text,
+                    statement.args
+                ))
+
+            try:
+                assert self.status == Program.RUNNING
+
+                Program.FUNCTION_MAP[statement.function.text.upper()](
+                    self, *statement.args
                 )
 
-            log_debug("execute: {0} {1}".format(
-                statement.function.text,
-                statement.args
-            ))
-            Program.FUNCTION_MAP[statement.function.text](
-                self, *statement.args
-            )
+            except IndexError as exception:
+                log_error("At line {0}: {1}.".format(
+                    self.position,
+                    exception.args[0]
+                ))
 
+                self.exit(-1)
+
+            except KeyError as exception:
+                log_error("At line {0}: Unknown keyword {1}.".format(
+                    self.position,
+                    exception.args[0]
+                ))
+
+                self.exit(-1)
+
+            except AssertionError:
+                log_warning("Program exited.")
+
+                self.exit(-1)
+
+            except Exception as exception:
+                log_error("An exception occured while running.\n{}".format(
+                    exception
+                ))
+
+                self.exit(-1)
+
+        return self.exitcode
+
+
+FLAG_NO_DEBUG = "--no-debug"
+FLAG_DEBUG = "--debug"
+FLAG_NO_MEMORY_DUMP = "--no-memory-dump"
+FLAG_NO_JUMP_DUMP = "--no-jump-dump"
+FLAG_NO_EXECUTE_DUMP = "--no-execute-dump"
+FLAG_NO_OUTPUT = "--no-output"
 
 if __name__ == "__main__":
     def parse_args():
         global DEBUG_FLAG
+        global NO_MEMORY_DUMP
+        global NO_JUMP_DUMP
+        global NO_EXECUTE_DUMP
+        global NO_OUTPUT
 
         filename = ""
 
         for arg in sys.argv[1:]:
-            if arg == "--no-debug":
-                DEBUG_FLAG = False
+            if arg.startswith("-"):
+                if arg == FLAG_NO_OUTPUT:
+                    NO_OUTPUT = True
 
-            elif arg == "--debug":
-                log_info("Debug mode is on.")
+                elif arg == FLAG_NO_DEBUG:
+                    DEBUG_FLAG = False
 
-                DEBUG_FLAG = True
+                elif arg == FLAG_DEBUG:
+                    DEBUG_FLAG = True
+
+                elif arg == FLAG_NO_MEMORY_DUMP:
+                    NO_MEMORY_DUMP = True
+
+                elif arg == FLAG_NO_JUMP_DUMP:
+                    NO_JUMP_DUMP = True
+
+                elif arg == FLAG_NO_EXECUTE_DUMP:
+                    NO_EXECUTE_DUMP = True
+
+                else:
+                    force_warning("Unknown parameter: {0}".format(arg))
 
             else:
                 filename = arg
 
         return filename
 
-
     if len(sys.argv) < 2:
         log_error("No input file.")
         exit(-1)
 
+    if DEBUG_FLAG:
+        log_info("Debug mode is on.")
+
+    readline.parse_and_bind("tab: complete")
+
     filename = parse_args()
-    file_buffer = FileBuffer(filename)
+
+    try:
+        file_buffer = FileBuffer(filename)
+    except:
+        log_error("Can't open file.")
+        exit(-1)
 
     tokenizer = Tokenizer(file_buffer)
     tokenizer.tokenize()
@@ -554,4 +699,7 @@ if __name__ == "__main__":
     program = Program(syntactic.statements)
     program.execute()
 
-    exit(program.exitcode)
+    status = exit(program.exitcode)
+
+    if status != 0:
+        log_warning("Program exited unnormally.")

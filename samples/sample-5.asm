@@ -1,4 +1,4 @@
-MEM 1
-READ 1
-PRT *1
-EXIT 0
+mem 1
+read 1
+prt *1
+exit 0

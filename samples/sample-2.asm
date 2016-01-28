@@ -4,5 +4,13 @@ PRT *2
 PRT *3
 PRT *4
 PRT *5
+MEM 6
+PRT *6
+MEM 4
+PRT *4
+MEM ..5.213
+# PRT *6
+SET 5 233
+# sdasf 121
 PRT 233
 EXIT -1
