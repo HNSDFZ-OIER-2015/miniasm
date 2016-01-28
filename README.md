@@ -1,3 +1,15 @@
+# miniasm V0.0.2
+* `PRT` now prints value:
+```
+PRT value
+```
+
+* Use `*` operator to get value of a index.
+```
+SET 1 233
+PRT *1  # Will print `233`
+```
+
 # miniasm V0.0.1
 Basic syntax and instructions.
 ```

@@ -5,6 +5,8 @@
 #
 
 import sys
+import copy
+import readline
 
 
 DEBUG_FLAG = False
@@ -27,7 +29,35 @@ def log_debug(message):
         print("(debug) {0}".format(message))
 
 
-class FileBuffer(object):
+class BufferObject(object):
+
+    """BufferObject provides interfaces to read data in files or string."""
+
+    def __init__(self):
+        super(BufferObject, self).__init__()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.eof():
+            raise StopIteration
+        else:
+            result = self.get_next()
+
+            if result is None:
+                raise StopIteration
+            else:
+                return result
+
+    def get_next(self):
+        raise NotImplementedError("This function is overloaded in derived classes")
+
+    def eof(self):
+        raise NotImplementedError("This function is overloaded in derived classes")
+        
+
+class FileBuffer(BufferObject):
 
     """Buffer to read chars from a file."""
 
@@ -45,7 +75,7 @@ class FileBuffer(object):
 
     def get_next(self):
         """Get the next char in the file stream."""
-        assert not self._ended, "File stream met EOF."
+        assert not self._ended, "File stream met EOF"
 
         if self._index == len(self._buffer) - 1:
             self._buffer = self._file.readline()
@@ -63,7 +93,7 @@ class FileBuffer(object):
 
     def close(self):
         """Close current file object."""
-        assert not self._file.closed, "File have been closed."
+        assert not self._file.closed, "File have been closed"
         self._file.close()
 
 
@@ -74,11 +104,21 @@ class Token(object):
     UNKNOWN = 0
     KEYWORD = 1
     LITERAL = 2
-    NEWLINE = 3
-    FINALLY = 4
+    OPERATOR = 3
+    NEWLINE = 4
+    FINALLY = 5
+
+    TOKEN_NAME = {
+        KEYWORD: "Keyword",
+        LITERAL: "Literal",
+        NEWLINE: "Newline",
+        OPERATOR:"Operator",
+        FINALLY: "EOF"
+    }
 
     ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    NUMBERS = "0123456789"
+    NUMBERS = "+-0123456789"
+    OPERATORS = "*"
 
     def __init__(self, type, text):
         super(Token, self).__init__()
@@ -87,14 +127,36 @@ class Token(object):
 
     def __str__(self):
         return "<Token: type = {0}, text = {1}>".format(
-            {
-                Token.KEYWORD: "Keyword",
-                Token.LITERAL: "Literal",
-                Token.NEWLINE: "Newline",
-                Token.FINALLY: "EOF"
-            }[self.type],
+            self.TOKEN_NAME[self.type],
             self.text
         )
+
+    def __repr__(self):
+        return "<Token: type = {0}, text = {1}>".format(
+            self.TOKEN_NAME[self.type],
+            self.text
+        )
+
+
+class TokenStream(object):
+
+    """TokenStream contains a list of tokens."""
+
+    def __init__(self):
+        super(TokenStream, self).__init__()
+        self.tokens = []
+
+    def __iter__(self):
+        return iter(self.tokens)
+
+    def append(self, token_type, token_text):
+        self.tokens.append(Token(token_type, token_text))
+
+    def pop(self):
+        self.tokens.pop()
+
+    def last(self):
+        return self.tokens[-1]
 
 
 class Tokenizer(object):
@@ -104,37 +166,35 @@ class Tokenizer(object):
     def __init__(self, buffer):
         super(Tokenizer, self).__init__()
         self.buffer = buffer
-        self.tokens = []
+        self.tokens = TokenStream()
         self._current = []
         self._mode = Token.KEYWORD
         self._ignore_mode = False
 
         assert not self.buffer.eof(), "Invalid file buffer"
 
-    def tokenize(self, one_line=False):
-        while not self.buffer.eof():
-            char = self.buffer.get_next()
+    def tokenize(self):
+        assert not self.buffer.eof(), "Buffer met EOF"
 
-            # Met eof
-            if char is None:
-                break
-
+        for char in self.buffer:
             if char == "\n":  # Newline
                 if len(self._current) > 0:
-                    self.tokens.append(
-                        Token(self._mode, "".join(self._current)))
+                    self.tokens.append(self._mode, "".join(self._current))
                     self._current = []
 
+                # Insert NOP for empty lines
+                if self.tokens.last().type == Token.NEWLINE:
+                    self.tokens.append(Token.KEYWORD, "NOP")
+
                 # Newline token
-                self.tokens.append(Token(Token.NEWLINE, "Newline"))
+                self.tokens.append(Token.NEWLINE, "Newline")
 
                 self._mode = Token.KEYWORD
                 self._ignore_mode = False
 
             elif char == " ":  # Space
                 if len(self._current) > 0:
-                    self.tokens.append(
-                        Token(self._mode, "".join(self._current)))
+                    self.tokens.append(self._mode, "".join(self._current))
                     self._current = []
 
                 self._mode = Token.LITERAL
@@ -145,14 +205,277 @@ class Tokenizer(object):
             elif self._ignore_mode:
                 continue
 
+            elif char in Token.OPERATORS:
+                self._mode = Token.OPERATOR
+                self._current.append(char)
+
+            elif self._mode == Token.OPERATOR and char not in Token.OPERATORS:
+                if len(self._current) > 0:
+                    self.tokens.append(Token.OPERATOR,"".join(self._current))
+                    self._current = []
+                    self._mode = Token.LITERAL
+
+                self._current.append(char)
+
             elif char in Token.ALPHABET or char in Token.NUMBERS:
                 self._current.append(char)
 
             else:
-                raise RuntimeError("Can't parse char: {}".format(char))
+                raise RuntimeError("Can't parse char: {0} (\"\{1}\")".format(char, ord(char)))
 
         if self.buffer.eof():
-            self.tokens.append(Token(Token.FINALLY, "EOF"))
+            self.tokens.append(Token.FINALLY, "EOF")
+
+
+class Statement(object):
+    """Statement means a line of code."""
+    def __init__(self, function, args):
+        super(Statement, self).__init__()
+        self.function = function
+        self.args = args
+
+    def __str__(self):
+        return "<Statement: function: {0}, args: {1}>".format(self.function, self.args)
+
+    def run():
+        assert isinstance(function, callable), "Call function not callable"
+
+        return function(*args)
+
+
+class Syntactic(object):
+    """Syntax alalysis."""
+    def __init__(self, tokens):
+        super(Syntactic, self).__init__()
+        self.tokens = tokens
+        self.statements = []
+        
+    def analyze(self):
+        command = None
+        args = []
+        operator = []
+
+        for token in self.tokens:
+            if token.type == Token.FINALLY:
+                break
+
+            elif token.type == Token.NEWLINE:
+                if command is not None:
+                    self.statements.append(Statement(command, args))
+                    command = None
+                    args = []
+                    operator = []
+
+            elif command is None:
+                command = token
+
+            else:
+                if token.type == Token.OPERATOR:
+                    operator.append(token)
+                else:
+                    operator.append(token)
+                    args.append(operator)
+                    operator = []
+
+
+class MemoryPool(object):
+    """MemoryPool manages memory."""
+    def __init__(self):
+        super(MemoryPool, self).__init__()
+        self.memory = []
+
+    def resize(self, size):
+        self.memory = []
+
+        for i in range(0, size + 1):
+            self.memory.append(int())
+
+        self.memory[0] = size
+
+    def memget(self, index):
+        if index < 0 or index > len(self.memory):
+            raise IndexError("Memory out of range.")
+
+        return self.memory[index]
+
+    def memset(self, index, data):
+        if index < 0 or index > len(self.memory):
+            raise IndexError("Memory out of range.")
+
+        self.memory[index] = data
+
+
+class Program(object):
+
+    """Run it!"""
+
+    def dereference(self, args):
+        if len(args) == 1:
+            return int(args[0].text)
+
+        result = int(args[len(args) - 1].text)
+        for i in range(0, len(args[0].text)):
+            result = self.memory.memget(
+                result
+            )
+
+        return result
+
+    def MEM(self, value):
+        assert isinstance(value, int)
+        self.memory.resize(value)
+
+    def SET(self, index, value):
+        self.memory.memset(index, value)
+
+    def CPY(self, index1, index2):
+        self.memory.memset(index2, self.memory.memget(index1))
+
+    def ADD(self, index1, index2, index3):
+        self.memory.memset(index3,
+            self.memory.memget(index1) + self.memory.memget(index2)
+        )
+
+    def SUB(self, index1, index2, index3):
+        self.memory.memset(index3,
+            self.memory.memget(index1) - self.memory.memget(index2)
+        )
+
+    def MUL(self, index1, index2, index3):
+        self.memory.memset(index3,
+            self.memory.memget(index1) * self.memory.memget(index2)
+        )
+
+    def DIV(self, index1, index2, index3):
+        self.memory.memset(index3,
+            self.memory.memget(index1) / self.memory.memget(index2)
+        )
+
+    def MOD(self, index1, index2, index3):
+        self.memory.memset(index3,
+            self.memory.memget(index1) % self.memory.memget(index2)
+        )
+
+    def INC(self, index):
+        self.memory.memset(index,
+            self.memory.memget(index) + 1
+        )
+
+    def DEC(self, index):
+        self.memory.memset(index,
+            self.memory.memget(index) - 1
+        )
+
+    def NEC(self, index):
+        self.memory.memset(index,
+            -self.memory.memget(index)
+        )
+
+    def AND(self, index1, index2, index3):
+        self.memory.memset(index3,
+            self.memory.memget(index1) & self.memory.memget(index2)
+        )
+
+    def OR(self, index1, index2, index3):
+        self.memory.memset(index3,
+            self.memory.memget(index1) | self.memory.memget(index2)
+        )
+
+    def XOR(self, index1, index2, index3):
+        self.memory.memset(index3,
+            self.memory.memget(index1) ^ self.memory.memget(index2)
+        )
+
+    def NOT(self, index):
+        self.memory.memset(index,
+            not self.memory.memget(index)
+        )
+
+    def SHL(self, index, value):
+        self.memory.memset(index,
+            self.memory.memget(index) << value
+        )
+
+    def SHR(self, index, value):
+        self.memory.memset(index,
+            self.memory.memget(index) >> value
+        )
+
+    def EQU(self, index1, index2, index31):
+        self.memory.memset(index3,
+            int(self.memory.memget(index1) == self.memory.memget(index2))
+        )
+
+    def GTER(self, index1, index2, index3):
+        self.memory.memset(index3,
+            int(self.memory.memget(index1) > self.memory.memget(index2))
+        )
+
+    def LESS(self, index1, index2, index3):
+        self.memory.memset(index3,
+            int(self.memory.memget(index1) < self.memory.memget(index2))
+        )
+
+    def JMP(self, value):
+        self.position = value - 1
+
+    def JIF(self, index, value):
+        if self.memory.memget(index):
+            self.JMP(value)
+
+    def PRT(self, value):
+        print(value)
+
+    def NOP(self):
+        pass
+
+    def EXIT(self, value):
+        self.status = Program.EXITED
+        self.exitcode = value
+
+    FUNCTIONS = [
+        MEM, SET, CPY, ADD, SUB, MUL,
+        DIV, MOD, INC, DEC, NEC, AND,
+        OR,  XOR, NOT, SHL, SHR, EQU,
+        GTER,LESS,JMP, JIF, PRT, NOP,
+        EXIT
+    ]
+
+    FUNCTION_MAP = {}
+
+    NOT_STARTED = 0
+    RUNNING = 1
+    EXITED = 2
+
+    def __init__(self, statements):
+        super(Program, self).__init__()
+        self.statements = statements
+        self.memory = MemoryPool()
+        self.status = Program.NOT_STARTED
+        self.exitcode = None
+        self.position = 0
+
+        for function in Program.FUNCTIONS:
+            Program.FUNCTION_MAP[function.__name__] = function
+
+    def execute(self):
+        self.status = Program.RUNNING
+
+        while self.status == Program.RUNNING and self.position < len(self.statements):
+            statement = copy.deepcopy(
+                self.statements[self.position]
+            )
+
+            self.position += 1
+
+            for i in range(0, len(statement.args)):
+                statement.args[i] = self.dereference(
+                    statement.args[i]
+                )
+
+            Program.FUNCTION_MAP[statement.function.text](
+                self, *statement.args
+            )
 
 
 if __name__ != "__main__":
@@ -165,9 +488,14 @@ if len(sys.argv) < 2:
 # Temporary test
 filename = sys.argv[1]
 file_buffer = FileBuffer(filename)
-tokenizer = Tokenizer(file_buffer)
 
+tokenizer = Tokenizer(file_buffer)
 tokenizer.tokenize()
 
-for token in tokenizer.tokens:
-    print(token)
+syntactic = Syntactic(tokenizer.tokens)
+syntactic.analyze()
+
+program = Program(syntactic.statements)
+program.execute()
+
+exit(program.exitcode)
