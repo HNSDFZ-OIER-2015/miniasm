@@ -9,9 +9,9 @@ MEM *11
 
 # Generate a sequence of 1 ... n
 ADD 1 2 3
-CPY 1 *3
-INC *3
-PRT **3
+READ *3
+# INC *3
+# PRT **3
 INC 1
 LESS 1 4 6
 JIF 6 11
@@ -74,11 +74,13 @@ CPY 11 13
 
 NOP
 CPY 13 11
-EQU 11 10 50
+ADD 2 11 13
+EQU *13 10 50
 NOT 50
-JIF 50 82 
+JIF 50 81
+INC 11
 PRT *11
-JMP 84
+JMP 86
 PRT -1
 
 EXIT 0

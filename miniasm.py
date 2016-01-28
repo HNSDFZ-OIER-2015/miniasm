@@ -117,8 +117,11 @@ class Token(object):
     }
 
     ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    NUMBERS = "+-0123456789"
+    NUMBERS = ".+-0123456789"
     OPERATORS = "*"
+    SPACE_CHAR = " "
+    COMMENT_CHAR = "#"
+    NEWLINE_CHAR = "\n"
 
     def __init__(self, type, text):
         super(Token, self).__init__()
@@ -177,7 +180,7 @@ class Tokenizer(object):
         assert not self.buffer.eof(), "Buffer met EOF"
 
         for char in self.buffer:
-            if char == "\n":  # Newline
+            if char in Token.NEWLINE_CHAR:  # Newline
                 if len(self._current) > 0:
                     self.tokens.append(self._mode, "".join(self._current))
                     self._current = []
@@ -192,14 +195,14 @@ class Tokenizer(object):
                 self._mode = Token.KEYWORD
                 self._ignore_mode = False
 
-            elif char == " ":  # Space
+            elif char in Token.SPACE_CHAR:  # Space
                 if len(self._current) > 0:
                     self.tokens.append(self._mode, "".join(self._current))
                     self._current = []
 
                 self._mode = Token.LITERAL
 
-            elif char == "#":
+            elif char in Token.COMMENT_CHAR:
                 self._ignore_mode = True
 
             elif self._ignore_mode:
@@ -279,35 +282,55 @@ class Syntactic(object):
 
 
 class MemoryPool(object):
+
     """MemoryPool manages memory."""
+
     def __init__(self):
         super(MemoryPool, self).__init__()
         self.memory = []
 
     def resize(self, size):
-        self.memory = []
+        log_debug("memory resize: {0}".format(size))
 
-        for i in range(0, size + 1):
-            self.memory.append(int())
+        distance = size - len(self.memory) + 1
+
+        if distance < 0:
+            while distance < 0:
+                self.memory.pop()
+
+                distance += 1
+        elif distance > 0:
+            while distance > 0:
+                self.memory.append(int())
+                
+                distance -= 1
 
         self.memory[0] = size
 
     def memget(self, index):
-        if index < 0 or index > len(self.memory):
+        if index < 0 or index >= len(self.memory):
             raise IndexError("Memory out of range.")
 
+        log_debug("memory get: {0} = {1}".format(index, self.memory[index]))
         return self.memory[index]
 
     def memset(self, index, data):
-        if index < 0 or index > len(self.memory):
+        if index < 0 or index >= len(self.memory):
             raise IndexError("Memory out of range.")
 
+        log_debug("memory set: {0} = {1}".format(index, data))
         self.memory[index] = data
 
 
 class Program(object):
 
     """Run it!"""
+
+    NOT_STARTED = 0
+    RUNNING = 1
+    EXITED = 2
+
+    PROMPT_STRING = "> "
 
     def dereference(self, args):
         if len(args) == 1:
@@ -388,7 +411,7 @@ class Program(object):
 
     def NOT(self, index):
         self.memory.memset(index,
-            not self.memory.memget(index)
+            int(not self.memory.memget(index))
         )
 
     def SHL(self, index, value):
@@ -401,7 +424,7 @@ class Program(object):
             self.memory.memget(index) >> value
         )
 
-    def EQU(self, index1, index2, index31):
+    def EQU(self, index1, index2, index3):
         self.memory.memset(index3,
             int(self.memory.memget(index1) == self.memory.memget(index2))
         )
@@ -417,6 +440,8 @@ class Program(object):
         )
 
     def JMP(self, value):
+        log_debug("jump: {}".format(value))
+
         self.position = value - 1
 
     def JIF(self, index, value):
@@ -433,19 +458,29 @@ class Program(object):
         self.status = Program.EXITED
         self.exitcode = value
 
+    def READ(self, index):
+        value = int(input(Program.PROMPT_STRING))
+        self.memory.memset(index, value)
+
+    def LEQ(self, index1, index2, index3):
+        self.memory.memset(index3,
+            int(self.memory.memget(index1) <= self.memory.memget(index2))
+        )
+
+    def GEQ(self, index1, index2, index3):
+        self.memory.memset(index3,
+            int(self.memory.memget(index1) >= self.memory.memget(index2))
+        )
+
     FUNCTIONS = [
         MEM, SET, CPY, ADD, SUB, MUL,
         DIV, MOD, INC, DEC, NEC, AND,
         OR,  XOR, NOT, SHL, SHR, EQU,
         GTER,LESS,JMP, JIF, PRT, NOP,
-        EXIT
+        EXIT,READ,LEQ, GEQ
     ]
 
     FUNCTION_MAP = {}
-
-    NOT_STARTED = 0
-    RUNNING = 1
-    EXITED = 2
 
     def __init__(self, statements):
         super(Program, self).__init__()
@@ -473,29 +508,50 @@ class Program(object):
                     statement.args[i]
                 )
 
+            log_debug("execute: {0} {1}".format(
+                statement.function.text,
+                statement.args
+            ))
             Program.FUNCTION_MAP[statement.function.text](
                 self, *statement.args
             )
 
 
-if __name__ != "__main__":
-    raise ImportError("It's not designed as a module to be imported.")
+if __name__ == "__main__":
+    def parse_args():
+        global DEBUG_FLAG
 
-if len(sys.argv) < 2:
-    log_error("No input file.")
-    exit(-1)
+        filename = ""
 
-# Temporary test
-filename = sys.argv[1]
-file_buffer = FileBuffer(filename)
+        for arg in sys.argv[1:]:
+            if arg == "--no-debug":
+                DEBUG_FLAG = False
 
-tokenizer = Tokenizer(file_buffer)
-tokenizer.tokenize()
+            elif arg == "--debug":
+                log_info("Debug mode is on.")
 
-syntactic = Syntactic(tokenizer.tokens)
-syntactic.analyze()
+                DEBUG_FLAG = True
 
-program = Program(syntactic.statements)
-program.execute()
+            else:
+                filename = arg
 
-exit(program.exitcode)
+        return filename
+
+
+    if len(sys.argv) < 2:
+        log_error("No input file.")
+        exit(-1)
+
+    filename = parse_args()
+    file_buffer = FileBuffer(filename)
+
+    tokenizer = Tokenizer(file_buffer)
+    tokenizer.tokenize()
+
+    syntactic = Syntactic(tokenizer.tokens)
+    syntactic.analyze()
+
+    program = Program(syntactic.statements)
+    program.execute()
+
+    exit(program.exitcode)

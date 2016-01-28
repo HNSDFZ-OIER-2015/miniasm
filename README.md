@@ -1,3 +1,16 @@
+# miniasm V0.0.3
+* Add keyword `READ`:
+```
+READ 1
+PRT *1  # Will output what you inputed
+```
+
+* Add keyword `LEQ` and `GEQ`, which means `less equal` and `greater equal`:
+```
+LEQ index index index
+GEQ index index index
+```
+
 # miniasm V0.0.2
 * `PRT` now prints value:
 ```
