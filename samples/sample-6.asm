@@ -8,13 +8,14 @@ ADD 4 9 11
 MEM *11
 
 # Generate a sequence of 1 ... n
+NOP 70
 ADD 1 2 3
 READ *3
 # INC *3
 # PRT **3
 INC 1
 LESS 1 4 6
-JIF 6 11
+JIF 6 *70
 
 # Binary search
 READ 10  # Target
@@ -28,28 +29,29 @@ SHR 13 1  # Divide with two
 ADD 2 13 50
 CPY *50 49
 EQU 49 10 51  # 51 is result
-JIF 51 75  # Exit
+JIF 51 *80  # Exit
 
 # Detect direction
 LESS 10 49 51
-JIF 51 37  # True
-JMP 39  # False
+JIF 51 2  # True
+JMP 3  # False
 CPY 13 12
+JMP *72
 
 GTER 10 49 51  # Else
-JIF 51 42  # True
-JMP 44  # False
+JIF 51 2  # True
+JMP *72  # False
 CPY 13 11
 
-NOP
+NOP 72
 
 SUB 12 11 52  # Distance of Right and Left
 
 # Abs
 SET 55 0
 LESS 52 55 51
-JIF 51 53
-JMP 54
+JIF 51 2
+JMP 2
 NEC 52
 NOP
 
@@ -72,7 +74,7 @@ CPY 12 13
 JMP 75
 CPY 11 13
 
-NOP
+NOP *80
 CPY 13 11
 ADD 2 11 13
 EQU *13 10 50

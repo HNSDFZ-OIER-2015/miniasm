@@ -490,10 +490,10 @@ class Program(object):
         )
 
     def JMP(self, value):
-        if not NO_JUMP_DUMP:
-            log_debug("jump: {}".format(value))
+        self.position = value
 
-        self.position = value - 1
+        if not NO_JUMP_DUMP:
+            log_debug("jump: {}".format(self.position + 1))
 
     def JIF(self, index, value):
         if self.memory.memget(index):
@@ -502,8 +502,9 @@ class Program(object):
     def PRT(self, value):
         print(value)
 
-    def NOP(self):
-        pass
+    def NOP(self, index=None):
+        if not index is None:
+            self.memory.memset(index, self.position - 1)
 
     def EXIT(self, value):
         self.status = Program.EXITED
@@ -525,12 +526,22 @@ class Program(object):
             int(self.memory.memget(index1) >= self.memory.memget(index2))
         )
 
+    def JMOV(self, value):
+        self.position += value - 1
+
+        if not NO_JUMP_DUMP:
+            log_debug("jump: {}".format(self.position + 1))
+
+    def JIFM(self, index, value):
+        if self.memory.memget(index):
+            self.JMOV(value)
+
     FUNCTIONS = [
         MEM, SET, CPY, ADD, SUB, MUL,
         DIV, MOD, INC, DEC, NEC, AND,
         OR,  XOR, NOT, SHL, SHR, EQU,
         GTER, LESS, JMP, JIF, PRT, NOP,
-        EXIT, READ, LEQ, GEQ
+        EXIT, READ, LEQ, GEQ, JMOV, JIFM
     ]
 
     FUNCTION_MAP = {}
@@ -540,7 +551,7 @@ class Program(object):
         self.statements = statements
         self.memory = MemoryPool()
         self.status = Program.NOT_STARTED
-        self.exitcode = None
+        self.exitcode = 0
         self.position = 0
 
         for function in Program.FUNCTIONS:
@@ -569,19 +580,10 @@ class Program(object):
                         statement.args[i]
                     )
                 except IndexError:
-                    log_error(
+                    raise RuntimeError(
                         "At line {0}: Can't dereference parameter.".format(
                             self.position
                         ))
-
-                    self.exit(-1)
-
-                except Exception as exception:
-                    log_error("An exception occured while running.\n{}".format(
-                        exception
-                    ))
-
-                    exit(-1)
 
             if not NO_EXECUTE_DUMP:
                 log_debug("{0}: {1} {2}".format(
@@ -590,40 +592,10 @@ class Program(object):
                     statement.args
                 ))
 
-            try:
-                assert self.status == Program.RUNNING
-
-                Program.FUNCTION_MAP[statement.function.text.upper()](
-                    self, *statement.args
-                )
-
-            except IndexError as exception:
-                log_error("At line {0}: {1}.".format(
-                    self.position,
-                    exception.args[0]
-                ))
-
-                self.exit(-1)
-
-            except KeyError as exception:
-                log_error("At line {0}: Unknown keyword {1}.".format(
-                    self.position,
-                    exception.args[0]
-                ))
-
-                self.exit(-1)
-
-            except AssertionError:
-                log_warning("Program exited.")
-
-                self.exit(-1)
-
-            except Exception as exception:
-                log_error("An exception occured while running.\n{}".format(
-                    exception
-                ))
-
-                self.exit(-1)
+            assert self.status == Program.RUNNING
+            Program.FUNCTION_MAP[statement.function.text.upper()](
+                self, *statement.args
+            )
 
         return self.exitcode
 
@@ -697,9 +669,29 @@ if __name__ == "__main__":
     syntactic.analyze()
 
     program = Program(syntactic.statements)
-    program.execute()
+    try:
+        program.execute()
+    except IndexError as exception:
+        log_error("At line {0}: {1}.".format(
+            program.position,
+            exception.args[0]
+        ))
 
-    status = exit(program.exitcode)
+    except KeyError as exception:
+        log_error("At line {0}: Unknown keyword {1}.".format(
+            program.position,
+            exception.args[0]
+        ))
+
+    except AssertionError:
+        log_warning("Program exited.")
+
+    except Exception as exception:
+        log_error("An exception occured while running.\n{}".format(
+            exception
+        ))
+
+    status = program.exitcode
 
     if status != 0:
         log_warning("Program exited unnormally.")
